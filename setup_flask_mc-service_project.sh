@@ -336,11 +336,11 @@ mkdir -p "$SCRIPTS_DIR"
 # Copiar los scripts existentes (asumiendo que están en el mismo directorio que setup_ecommerce.sh)
 SCRIPT_SOURCE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-cp "$SCRIPT_SOURCE_DIR/create_microservice.sh" "$SCRIPTS_DIR/" || info "Advertencia: No se pudo copiar create_microservice.sh"
-cp "$SCRIPT_SOURCE_DIR/start_dev.sh" "$SCRIPTS_DIR/" || info "Advertencia: No se pudo copiar start_dev.sh"
-cp "$SCRIPT_SOURCE_DIR/stop_dev.sh" "$SCRIPTS_DIR/" || info "Advertencia: No se pudo copiar stop_dev.sh"
-cp "$SCRIPT_SOURCE_DIR/deploy_staging.sh" "$SCRIPTS_DIR/" || info "Advertencia: No se pudo copiar deploy_staging.sh"
-cp "$SCRIPT_SOURCE_DIR/deploy_prod_k8s.sh" "$SCRIPTS_DIR/" || info "Advertencia: No se pudo copiar deploy_prod_k8s.sh"
+cp "$SCRIPT_SOURCE_DIR/start_dev.sh" "$SCRIPTS_DIR/" || error "Advertencia: No se pudo copiar start_dev.sh"
+cp "$SCRIPT_SOURCE_DIR/stop_dev.sh" "$SCRIPTS_DIR/" || error "Advertencia: No se pudo copiar stop_dev.sh"
+cp "$SCRIPT_SOURCE_DIR/deploy_staging.sh" "$SCRIPTS_DIR/" || error "Advertencia: No se pudo copiar deploy_staging.sh"
+cp "$SCRIPT_SOURCE_DIR/deploy_prod_k8s.sh" "$SCRIPTS_DIR/" || error "Advertencia: No se pudo copiar deploy_prod_k8s.sh"
+cp "$SCRIPT_SOURCE_DIR/create_microservice.sh" "$SCRIPTS_DIR/" || error "Advertencia: No se pudo copiar create_microservice.sh"
 
 # Hacer scripts ejecutables
 chmod +x "$SCRIPTS_DIR"/*.sh
@@ -361,8 +361,8 @@ touch "$FRONTEND_DIR/app.py" \
       "$FRONTEND_DIR/static/css/style.css"
 
 # requirements.txt (Frontend)
-info "Flask" > "$FRONTEND_DIR/requirements.txt"
-info "requests # Para comunicarse con el Gateway" >> "$FRONTEND_DIR/requirements.txt"
+echo "Flask" > "$FRONTEND_DIR/requirements.txt"
+echo "requests # Para comunicarse con el Gateway" >> "$FRONTEND_DIR/requirements.txt"
 
 # app.py (Frontend - Placeholder)
 cat << EOF > "$FRONTEND_DIR/app.py"
@@ -696,7 +696,7 @@ cat << EOF > Makefile
 # Detectar comando de Docker Compose
 ifeq ($(shell docker compose version --short),)
   ifeq ($(shell docker-compose version --short),)
-    COMPOSE_CMD = [1;31mERROR:[0m Docker Compose (v2 plugin or v1 standalone) not found.
+    COMPOSE_CMD=$(shell docker compose version > /dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
   else
     COMPOSE_CMD = docker-compose
     
@@ -706,12 +706,19 @@ else
 endif
 
 # Variables
+PYTHON=python3
+VENV_NAME=.venv
 SCRIPTS_DIR = ./scripts
 
 .PHONY: help up down logs ps create-service deploy-staging deploy-prod
 
 help:
 	@echo "Comandos disponibles:"
+	@echo "  setup          : Crea entorno virtual e instala dependencias dev."
+	@echo "  lint           : Ejecuta flake8 y black (modo check)."
+	@echo "  format         : Formatea el código con black."
+	@echo "  test           : Ejecuta pytest (necesita configuración adicional para microservicios)."
+	@echo "  docker-build   : Construye las imágenes Docker de los servicios."
 	@echo "  make up             : Inicia el entorno de desarrollo (docker compose up -d --build)."
 	@echo "  make down           : Detiene el entorno de desarrollo (docker compose down)."
 	@echo "  make logs           : Muestra los logs de todos los servicios."
@@ -720,6 +727,36 @@ help:
 	@echo "  make create-service : Ejecuta el script para crear un nuevo microservicio."
 	@echo "  make deploy-staging : Ejecuta el script de despliegue a Staging."
 	@echo "  make deploy-prod    : Ejecuta el script de despliegue a Producción (K8s)."
+	@echo "  clean          : Elimina archivos temporales y caché de Python."
+
+setup: $(VENV_NAME)/bin/activate
+
+$(VENV_NAME)/bin/activate: requirements-dev.txt
+	test -d $(VENV_NAME) || $(PYTHON) -m venv $(VENV_NAME)
+	$(VENV_NAME)/bin/pip install --upgrade pip
+	$(VENV_NAME)/bin/pip install -r requirements-dev.txt
+	touch $(VENV_NAME)/bin/activate # Marca como creado/actualizado
+
+lint: setup
+	@echo "Ejecutando Flake8..."
+	$(VENV_NAME)/bin/flake8 . --count --show-source --statistics
+	@echo "Comprobando formato con Black..."
+	$(VENV_NAME)/bin/black --check .
+
+format: setup
+	@echo "Formateando código con Black..."
+	$(VENV_NAME)/bin/black .
+
+test: setup
+	@echo "Ejecutando Pytest..."
+	# Esto es simplificado. Necesitarías una forma de ejecutar tests
+	# para cada microservicio o tests de integración que arranquen compose.
+	# $(VENV_NAME)/bin/pytest
+	@echo "NOTA: Target 'test' necesita implementación específica para microservicios."
+
+docker-build:
+	@echo "Construyendo imágenes Docker..."
+	$(COMPOSE_CMD) build
 
 up:
 	@echo "Iniciando entorno de desarrollo..."
@@ -751,10 +788,6 @@ create-service:
 	@echo "Ejecutando script para crear un nuevo microservicio..."
 	@/create_microservice.sh
 
-deploy-develop:
-	@echo "Ejecutando despliegue en local..."
-	@/start_dev.sh
-
 deploy-staging:
 	@echo "Ejecutando despliegue a Staging..."
 	@/deploy_staging.sh
@@ -762,6 +795,16 @@ deploy-staging:
 deploy-prod:
 	@echo "Ejecutando despliegue a Producción (K8s)..."
 	@/deploy_prod_k8s.sh
+
+clean:
+	@echo "Limpiando archivos temporales..."
+	find . -type f -name '*.py[co]' -delete
+	find . -type d -name '__pycache__' -delete
+	find . -type d -name '.pytest_cache' -exec rm -rf {} +
+	find . -type d -name '.mypy_cache' -exec rm -rf {} +
+	rm -f .coverage*
+	rm -rf htmlcov/
+	rm -rf $(VENV_NAME)
 EOF
 
 info "Makefile creado."
