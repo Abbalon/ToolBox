@@ -4,31 +4,44 @@
 
 PROJECT_ROOT=$(pwd) # Asume que se ejecuta desde la raíz del proyecto
 
-echo "================================================="
-echo " Iniciando Entorno de Desarrollo Local"
-echo " Proyecto en: $PROJECT_ROOT"
-echo "================================================="
+# --- Helper Functions ---
+info() {
+  echo -e "\e[1;34mINFO:\e[0m $1"
+}
+
+error() {
+  echo -e "\e[1;31mERROR:\e[0m $1"
+}
+
+success() {
+  echo -e "\e[1;32mSUCCESS:\e[0m $1"
+}
+
+info "================================================="
+info " Iniciando Entorno de Desarrollo Local"
+info " Proyecto en: $PROJECT_ROOT"
+info "================================================="
 
 # --- Prerrequisitos ---
-echo "[1/4] Verificando Docker..."
+info "[1/4] Verificando Docker..."
 if ! command -v docker &> /dev/null; then
-    echo "ERROR: Docker no está instalado o no se encuentra en el PATH."
-    echo "Por favor, instala Docker: https://docs.docker.com/get-docker/"
+    error "Docker no está instalado o no se encuentra en el PATH."
+    info "Por favor, instala Docker: https://docs.docker.com/get-docker/"
     exit 1
 fi
 docker --version
 
-echo "[2/4] Verificando Docker Compose..."
+info "[2/4] Verificando Docker Compose..."
 # Docker Compose v2 ahora es parte del plugin `docker compose`
 if ! docker compose version &> /dev/null; then
      # Comprobar la versión v1 independiente como fallback (aunque está obsoleta)
      if ! command -v docker-compose &> /dev/null; then
-        echo "ERROR: Docker Compose (plugin v2 o v1 standalone) no está instalado o no se encuentra."
-        echo "Recomendado: Instala Docker Desktop o sigue las instrucciones para Docker Compose v2."
-        echo "Info: https://docs.docker.com/compose/install/"
+        error "Docker Compose (plugin v2 o v1 standalone) no está instalado o no se encuentra."
+        info "Recomendado: Instala Docker Desktop o sigue las instrucciones para Docker Compose v2."
+        info "Info: https://docs.docker.com/compose/install/"
         exit 1
      else
-        echo "Advertencia: Usando docker-compose v1 (obsoleto). Se recomienda actualizar a v2 (plugin 'docker compose')."
+        info "Advertencia: Usando docker-compose v1 (obsoleto). Se recomienda actualizar a v2 (plugin 'docker compose')."
         COMPOSE_CMD="docker-compose"
      fi
 else
@@ -37,51 +50,51 @@ fi
 $COMPOSE_CMD version
 
 # --- Configuración ---
-echo "[3/4] Verificando archivo de configuración .env..."
+info "[3/4] Verificando archivo de configuración .env..."
 if [ ! -f "$PROJECT_ROOT/.env" ]; then
-    echo "ADVERTENCIA: No se encontró el archivo .env en $PROJECT_ROOT."
-    echo "Se recomienda crear un archivo .env con la configuración local."
-    echo "Puedes copiar '.env.example' si existe: cp .env.example .env"
+    info "ADVERTENCIA: No se encontró el archivo .env en $PROJECT_ROOT."
+    info "Se recomienda crear un archivo .env con la configuración local."
+    info "Puedes copiar '.env.example' si existe: cp .env.example .env"
     read -p "¿Continuar sin .env? (s/N): " confirm_env
     if [[ ! "$confirm_env" =~ ^[Ss]$ ]]; then
-        echo "Operación cancelada. Por favor, crea el archivo .env."
+        error "Operación cancelada. Por favor, crea el archivo .env."
         exit 1
     fi
 else
-    echo "Archivo .env encontrado."
+    info "Archivo .env encontrado."
     # Podrías añadir una validación básica de variables aquí si quisieras
 fi
 
 # --- Arranque ---
-echo "[4/4] Iniciando servicios con Docker Compose..."
-echo "Usando comando: '$COMPOSE_CMD up --build -d'"
-echo "  --build : Reconstruye imágenes si los Dockerfiles o el contexto cambiaron."
-echo "  -d      : Ejecuta en modo detached (segundo plano)."
-echo "Puede tardar un poco la primera vez o si se reconstruyen imágenes..."
+info "[4/4] Iniciando servicios con Docker Compose..."
+info "Usando comando: '$COMPOSE_CMD up --build -d'"
+info "  --build : Reconstruye imágenes si los Dockerfiles o el contexto cambiaron."
+info "  -d      : Ejecuta en modo detached (segundo plano)."
+info "Puede tardar un poco la primera vez o si se reconstruyen imágenes..."
 
 # Ejecutar Docker Compose
 $COMPOSE_CMD up --build -d
 
 # Verificar estado (opcional pero útil)
-echo "-------------------------------------------------"
-echo "Verificando estado de los contenedores..."
+info "-------------------------------------------------"
+info "Verificando estado de los contenedores..."
 $COMPOSE_CMD ps
-echo "-------------------------------------------------"
+info "-------------------------------------------------"
 
 # Instrucciones post-arranque con Consul
-echo "¡Entorno local iniciado con Consul!"
-echo "-------------------------------------------------"
-echo "Servicios:"
+success "¡Entorno local iniciado con Consul!"
+info "-------------------------------------------------"
+info "Servicios:"
 $COMPOSE_CMD ps
-echo "-------------------------------------------------"
-echo "Consul está accesible en http://localhost:8500 (contenedor 'consul')."
-echo "Tus microservicios deberían estar configurados para registrarse en Consul."
-echo "-------------------------------------------------"
-echo "Puedes ver los logs de Consul con: '$COMPOSE_CMD logs -f consul'"
-echo "Para ver los logs de un microservicio: '$COMPOSE_CMD logs -f [nombre_servicio]'"
-echo "Para detener el entorno, ejecuta: './stop_dev.sh' o '$COMPOSE_CMD down'"
-echo "El frontend debería estar accesible en http://localhost:8080 (o el puerto que hayas configurado)"
-echo "La API Gateway en http://localhost:5000 (o el puerto configurado)"
-echo "El microservicio '${SERVICE_NAME}' debería estar accesible en http://localhost:5001 (o el puerto configurado)"
+info "-------------------------------------------------"
+success "Consul está accesible en http://localhost:8500 (contenedor 'consul')."
+info "Tus microservicios deberían estar configurados para registrarse en Consul."
+info "-------------------------------------------------"
+info "Puedes ver los logs de Consul con: '$COMPOSE_CMD logs -f consul'"
+info "Para ver los logs de un microservicio: '$COMPOSE_CMD logs -f [nombre_servicio]'"
+info "Para detener el entorno, ejecuta: './stop_dev.sh' o '$COMPOSE_CMD down'"
+success "El frontend debería estar accesible en http://localhost:8080 (o el puerto que hayas configurado)"
+success "La API Gateway en http://localhost:5000 (o el puerto configurado)"
+success "El microservicio '${SERVICE_NAME}' debería estar accesible en http://localhost:5001 (o el puerto configurado)"
 
 exit 0

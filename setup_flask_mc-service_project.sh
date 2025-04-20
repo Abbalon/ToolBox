@@ -14,27 +14,43 @@
 # Los microservicios específicos (Products, Clients, Orders, etc.)
 # se añadirán DESPUÉS usando el script 'create_microservice.sh'.
 
+# --- Helper Functions ---
+info() {
+  echo -e "\e[1;34mINFO:\e[0m $1"
+}
+
+error() {
+  echo -e "\e[1;31mERROR:\e[0m $1"
+}
+
+success() {
+  echo -e "\e[1;32mSUCCESS:\e[0m $1"
+}
+
 info "====================================================="
 info " Creando Infraestructura Base para Proyecto Microservicios"
 info "====================================================="
 
 # --- Configuración ---
+PARENT_DIR="$(dirname "$(pwd)")"
 PROJECT_NAME="simple_ecommerce_app"
+PROJECT_DIR="$PARENT_DIR/$PROJECT_NAME"
 SCRIPTS_DIR="scripts" # Directorio para guardar los scripts de gestión
 
 # --- Creación Directorio Raíz ---
-if [ -d "$PROJECT_NAME" ]; then
-  info "Advertencia: El directorio '$PROJECT_NAME' ya existe."
+if [ -d "$PROJECT_DIR" ]; then
+  info "Advertencia: El directorio '$PROJECT_DIR' ya existe."
   read -p "¿Continuar y potencialmente sobrescribir archivos de configuración base? (s/N): " confirm
   if [[ ! "$confirm" =~ ^[Ss]$ ]]; then
     error "Operación cancelada."
     exit 1
   fi
 else
-  mkdir "$PROJECT_NAME" || { error "No se pudo crear el directorio $PROJECT_NAME"; exit 1; }
+  mkdir "$PROJECT_DIR" || { error "No se pudo crear el directorio $PROJECT_DIR"; exit 1; }
+  cd "$PROJECT_DIR" || exit 1
 fi
-cd "$PROJECT_NAME" || exit 1
-info "Directorio raíz del proyecto '$PROJECT_NAME' creado/seleccionado."
+cd "$PROJECT_DIR" || exit 1
+info "Directorio raíz del proyecto '$PROJECT_DIR' creado/seleccionado."
 info "-----------------------------------------------------"
 
 # --- Archivos Raíz Básicos ---
@@ -271,18 +287,44 @@ CONSUL_PORT=8500
 EOF
 
 # CHANGELOG.md (Opcional)
-touch CHANGELOG.md
-info "# Changelog" > CHANGELOG.md
-info "" >> CHANGELOG.md
-info "Todas las notas de cambios notables a este proyecto serán documentadas en este archivo." >> CHANGELOG.md
-info "" >> CHANGELOG.md
-info "El formato está basado en Keep a Changelog," >> CHANGELOG.md
-info "y este proyecto se adhiere a Semantic Versioning." >> CHANGELOG.md
-info "" >> CHANGELOG.md
-info "## [Unreleased]" >> CHANGELOG.md
-info "" >> CHANGELOG.md
-info "### Added" >> CHANGELOG.md
-info "- Estructura inicial del proyecto y scripts de infraestructura." >> CHANGELOG.md
+cat << EOF > CHANGELOG.md
+# Changelog
+
+Todas las cambios notables de este proyecto serán documentados en este archivo.
+
+El formato está basado en [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased] - YYYY-MM-DD
+
+### Added
+-   Endpoint para búsqueda de productos por categoría en `products-service`.
+
+### Changed
+### Deprecated
+### Removed
+### Fixed
+-   Corrección en la validación de emails durante el registro en `clients-service`.
+
+### Security
+## [1.0.0] - 2025-04-10
+
+### Added
+-   Lanzamiento inicial de la aplicación con funcionalidades básicas:
+    -   Microservicios: Frontend, Gateway, Discover, Products, Clients.
+    * Gestión de catálogo de productos (CRUD básico).
+    * Registro y autenticación de clientes (JWT).
+    * Descubrimiento de servicios con etcd.
+    * Despliegue básico con Docker Compose para desarrollo.
+
+## [0.1.0] - 2025-03-15
+
+### Added
+-   Configuración inicial del proyecto.
+-   Estructura de directorios para microservicios.
+-   Implementación básica del servicio `discover-service` con Flask y etcd.
+-   Dockerfile inicial para `discover-service`.
+EOF
 
 info "Archivos raíz creados."
 info "-----------------------------------------------------"
@@ -652,12 +694,12 @@ cat << EOF > Makefile
 # Makefile para gestionar el entorno de desarrollo y tareas comunes
 
 # Detectar comando de Docker Compose
-ifeq (\$(shell docker compose version --short),)
-  ifeq (\$(shell docker-compose version --short),)
-    COMPOSE_CMD = $(error "Docker Compose (v2 plugin or v1 standalone) not found.")
+ifeq ($(shell docker compose version --short),)
+  ifeq ($(shell docker-compose version --short),)
+    COMPOSE_CMD = [1;31mERROR:[0m Docker Compose (v2 plugin or v1 standalone) not found.
   else
     COMPOSE_CMD = docker-compose
-    $(warning "Using deprecated docker-compose v1. Consider upgrading to v2 plugin.")
+    
   endif
 else
   COMPOSE_CMD = docker compose
@@ -681,21 +723,20 @@ help:
 
 up:
 	@echo "Iniciando entorno de desarrollo..."
-	@$(SCRIPTS_DIR)/start_dev.sh
+	@/start_dev.sh
 
 down:
 	@echo "Deteniendo entorno de desarrollo..."
-	@$(SCRIPTS_DIR)/stop_dev.sh
+	@/stop_dev.sh
 
 # Target para logs generales y específicos
-logs: ARGS = $(filter-out $@,$(MAKECMDGOALS))
-SERVICE_NAME = $(word 1, $(ARGS))
-ifeq ($(SERVICE_NAME),)
+logs:
+ifeq ($(service),)
 	@echo "Mostrando logs de todos los servicios... (Ctrl+C para salir)"
 	@$(COMPOSE_CMD) logs -f
 else
-	@echo "Mostrando logs del servicio $(SERVICE_NAME)... (Ctrl+C para salir)"
-	@$(COMPOSE_CMD) logs -f $(SERVICE_NAME)
+	@echo "Mostrando logs del servicio $(service)... (Ctrl+C para salir)"
+	@$(COMPOSE_CMD) logs -f $(service)
 endif
 # Capturar argumentos después de 'logs' para el nombre del servicio
 # Ejemplo: make logs service=frontend
@@ -704,21 +745,25 @@ endif
 
 ps:
 	@echo "Contenedores en ejecución:"
-	@$(COMPOSE_CMD) ps
+	@ ps
 
 create-service:
 	@echo "Ejecutando script para crear un nuevo microservicio..."
-	@$(SCRIPTS_DIR)/create_microservice.sh
+	@/create_microservice.sh
+
+deploy-develop:
+	@echo "Ejecutando despliegue en local..."
+	@/start_dev.sh
 
 deploy-staging:
 	@echo "Ejecutando despliegue a Staging..."
-	@$(SCRIPTS_DIR)/deploy_staging.sh
+	@/deploy_staging.sh
 
 deploy-prod:
 	@echo "Ejecutando despliegue a Producción (K8s)..."
-	@$(SCRIPTS_DIR)/deploy_prod_k8s.sh
-
+	@/deploy_prod_k8s.sh
 EOF
+
 info "Makefile creado."
 info "-----------------------------------------------------"
 
